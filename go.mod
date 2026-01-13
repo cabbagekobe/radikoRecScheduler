@@ -2,10 +2,12 @@ module radigoSchedule
 
 go 1.25.5
 
-require github.com/yyoshiki41/go-radiko v0.9.0
+require (
+	github.com/briandowns/spinner v1.23.2
+	github.com/yyoshiki41/go-radiko v0.9.0
+)
 
 require (
-	github.com/briandowns/spinner v1.23.2 // indirect
 	github.com/fatih/color v1.7.0 // indirect
 	github.com/grafov/m3u8 v0.11.1 // indirect
 	github.com/mattn/go-colorable v0.1.2 // indirect

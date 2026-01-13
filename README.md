@@ -64,12 +64,4 @@ This file contains the list of programs you want to record. It's an array of JSO
 ]
 ```
 
-### `config.json`
 
-This file can be used for application-specific configuration. Currently, there are no configurable options. If the file doesn't exist, a default empty one will be created on the first run.
-
-**Example `config.json` (empty):**
-
-```json
-{}
-```

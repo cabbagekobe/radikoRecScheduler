@@ -14,14 +14,12 @@ func main() {
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "Usage of %s:\n", os.Args[0])
 		flag.PrintDefaults()
-		fmt.Fprintln(os.Stderr, "\nConfiguration is loaded from config.json. Schedule is loaded from schedule.json.")
+		fmt.Fprintln(os.Stderr, "\nSchedule is loaded from schedule.json.")
 		fmt.Fprintln(os.Stderr, "For detailed usage and configuration, refer to README.md.")
 	}
 
 	scheduleFilePath := flag.String("file", "schedule.json", "Path to the schedule JSON file.")
 	flag.Parse()
-
-	internal.LoadConfig("config.json")
 
 	scheduleEntries, err := internal.LoadSchedule(*scheduleFilePath)
 	if err != nil {

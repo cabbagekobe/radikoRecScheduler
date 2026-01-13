@@ -1,7 +1,7 @@
 # radikoRecScheduler
 
-**Please do not use this project for commercial use. Only for your personal, non-commercial use.**  
-**個人での視聴の目的以外で利用しないでください.**
+**This project is intended for personal, non-commercial use only. Commercial use is prohibited.**
+**個人での視聴・利用目的以外での使用は禁止します。**
 
 This tool automatically calculates the most recent past broadcast time for radio programs defined in a `schedule.json` file and directly records them using the `go-radiko` and `radigo` Go libraries.
 

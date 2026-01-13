@@ -33,7 +33,7 @@
 
 # Application-specific ignores
 # The executable name if built with `go build`
-/radigoSchedule
+/radikoRecScheduler
 /output/
 
 # Keep config.json out of version control

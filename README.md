@@ -43,7 +43,24 @@ This tool automatically calculates the most recent past broadcast time for radio
 
 ## Schedule File Configuration
 
-### `schedule.json`
+### `schedule.json` Location
+
+The `schedule.json` file, which defines your radio program schedule, is searched for in the following order:
+
+1.  **XDG Base Directory (Recommended):**
+    *   The application first checks the path specified by the `XDG_CONFIG_HOME` environment variable. If set, it will look for `schedule.json` at `$XDG_CONFIG_HOME/radigoSchedule/schedule.json`.
+    *   If `XDG_CONFIG_HOME` is not set, it defaults to `~/.config/radigoSchedule/schedule.json` on Linux/macOS.
+    *   On Windows, this typically resolves to `%APPDATA%\radigoSchedule\schedule.json`.
+    *   The necessary directory structure (`radigoSchedule` within the config directory) will be created automatically if it doesn't exist.
+
+2.  **Current Working Directory (Fallback):**
+    *   If `schedule.json` is not found in the XDG Base Directory compliant location, the application will then look for `schedule.json` in the current directory where `radigoSchedule` is executed.
+
+3.  **Custom Path (Using `--file` flag):**
+    *   You can always specify a custom path to your `schedule.json` using the `--file` flag:
+        ```bash
+        ./radigoSchedule --file /path/to/your/custom/schedule.json
+        ```
 
 This file contains the list of programs you want to record. It's an array of JSON objects, where each object has the following properties:
 
@@ -57,16 +74,16 @@ This file contains the list of programs you want to record. It's an array of JSO
 ```json
 [
   {
-    "program_name": "My Favorite Show",
-    "day_of_week": "水",
-    "start_time": "030000",
+    "program_name": "オードリーのオールナイトニッポン",
+    "day_of_week": "土",
+    "start_time": "010000",
     "station_id": "LFR"
   },
   {
-    "program_name": "Another Show",
-    "day_of_week": "金",
-    "start_time": "113000",
-    "station_id": "FMT"
+    "program_name": "櫻坂46 こちら有楽町星空放送局",
+    "day_of_week": "日",
+    "start_time": "230000",
+    "station_id": "LFR"
   }
 ]
 ```

@@ -1,0 +1,38 @@
+# Binaries for programs and plugins
+*.exe
+*.darwin-arm64
+*.darwin-amd64
+*.freebsd-*
+*.linux-arm64
+*.linux-amd64
+*.netbsd-*
+*.openbsd-*
+*.plan9-*
+*.windows-*
+
+# Test binary, generated with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with `-o` flag
+*.out
+
+# Dependency directories (remove the comment below to include it)
+# vendor/
+
+# Go module path cache
+# ~/.cache/go-build
+# ~/go/pkg/mod
+
+# Editor directories and files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Application-specific ignores
+/radigoSchedule # The executable name if built with `go build`
+/output/
+config.json # Keep config.json out of version control
+schedule.json # Keep schedule.json out of version control, as it's user-specific

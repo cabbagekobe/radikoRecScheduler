@@ -41,7 +41,7 @@ func CalculateRecentPastRunTime(entry ScheduleEntry, now time.Time) (time.Time, 
 
 	// Calculate the difference in days from today to the target weekday
 	daysOffset := int(targetWeekday) - int(now.Weekday())
-	
+
 	// Create a candidate time for this week at the target start time.
 	candidate := time.Date(now.Year(), now.Month(), now.Day(), startTime.Hour(), startTime.Minute(), startTime.Second(), 0, JST)
 	candidate = candidate.AddDate(0, 0, daysOffset)

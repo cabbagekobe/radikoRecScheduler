@@ -29,7 +29,7 @@ func TestCalculateRecentPastRunTime(t *testing.T) {
 				StartTime: "150000",
 			},
 			now:      time.Date(2026, time.January, 13, 10, 0, 0, 0, JST), // Tuesday
-			expected: time.Date(2026, time.January, 6, 15, 0, 0, 0, JST), // Last Tuesday
+			expected: time.Date(2026, time.January, 6, 15, 0, 0, 0, JST),  // Last Tuesday
 		},
 		{
 			name: "Target day before today (this week)", // Today is Tuesday, Target Monday
@@ -47,7 +47,7 @@ func TestCalculateRecentPastRunTime(t *testing.T) {
 				StartTime: "100000",
 			},
 			now:      time.Date(2026, time.January, 13, 10, 0, 0, 0, JST), // Tuesday
-			expected: time.Date(2026, time.January, 7, 10, 0, 0, 0, JST), // Last Wednesday
+			expected: time.Date(2026, time.January, 7, 10, 0, 0, 0, JST),  // Last Wednesday
 		},
 		{
 			name: "Invalid DayOfWeek",
@@ -82,7 +82,7 @@ func TestCalculateRecentPastRunTime(t *testing.T) {
 				DayOfWeek: "日",
 				StartTime: "200000", // 8 PM Sunday
 			},
-			now:      time.Date(2026, time.January, 12, 1, 0, 0, 0, JST), // Monday 1 AM
+			now:      time.Date(2026, time.January, 12, 1, 0, 0, 0, JST),  // Monday 1 AM
 			expected: time.Date(2026, time.January, 11, 20, 0, 0, 0, JST), // Previous Sunday 8 PM
 		},
 		{
@@ -92,7 +92,7 @@ func TestCalculateRecentPastRunTime(t *testing.T) {
 				StartTime: "010000", // 1 AM Monday
 			},
 			now:      time.Date(2026, time.January, 11, 23, 0, 0, 0, JST), // Sunday 11 PM
-			expected: time.Date(2026, time.January, 5, 1, 0, 0, 0, JST), // Previous Monday 1 AM
+			expected: time.Date(2026, time.January, 5, 1, 0, 0, 0, JST),   // Previous Monday 1 AM
 		},
 	}
 

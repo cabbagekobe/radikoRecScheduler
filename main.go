@@ -4,7 +4,7 @@ import (
 	"flag"
 	"fmt" // Added
 	"log"
-	"os"   // Added
+	"os" // Added
 	"time"
 
 	"radigoSchedule/internal" // Assuming radigoSchedule is the module name
@@ -53,12 +53,16 @@ func main() {
 			continue
 		}
 
-		if err := internal.ExecuteJob(entry, recentPastTime, "output"); err != nil {
+		// Create a new goradiko client for each job. The ExecuteJob will handle token authorization.
+		radikoClient, err := internal.NewGoradikoClient("") // Token will be authorized inside ExecuteJob
+		if err != nil {
+			log.Fatalf("Failed to create Radiko client for job: %v", err)
+		}
+
+		if err := internal.ExecuteJob(radikoClient, entry, recentPastTime, "output"); err != nil {
 			log.Printf("Error executing job for '%s': %v", entry.ProgramName, err)
 		}
 	}
 
 	log.Println("All scheduled past broadcasts processed. Exiting.")
 }
-
-

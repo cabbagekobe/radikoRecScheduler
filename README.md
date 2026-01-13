@@ -1,13 +1,13 @@
 # Radigo Schedule
 
-This tool automatically calculates the most recent past broadcast time for radio programs defined in a `schedule.json` file and executes a recording command via `radigo`.
+This tool automatically calculates the most recent past broadcast time for radio programs defined in a `schedule.json` file and directly records them using the `go-radiko` and `radigo` Go libraries.
 
 ## Features
 
 - Reads a schedule of radio programs from a `schedule.json` file.
 - For each program, calculates the most recent past broadcast time.
-- Executes the `radigo rec` command for the calculated broadcast time.
-- The path to the `radigo` executable is configurable.
+- Directly records the program by integrating with `go-radiko` (for API interactions and stream URLs) and `radigo` (for M3U8 chunklist parsing) Go libraries.
+- Downloads and concatenates AAC audio chunks into a single output file.
 
 ## Usage
 
@@ -32,6 +32,7 @@ This tool automatically calculates the most recent past broadcast time for radio
     ```bash
     ./radigoSchedule --file /path/to/your/schedule.json
     ```
+    Recorded files will be saved in the `output/` directory.
 
 ## Configuration
 
@@ -42,7 +43,7 @@ This file contains the list of programs you want to record. It's an array of JSO
 - `program_name`: The name of the program (for logging purposes).
 - `day_of_week`: The day of the week in Japanese ("日", "月", "火", "水", "木", "金", "土").
 - `start_time`: The start time of the program in `HHMMSS` format (e.g., "030000" for 3:00 AM).
-- `station_id`: The station ID used by `radigo` (e.g., "LFR").
+- `station_id`: The station ID used by Radiko (e.g., "LFR").
 
 **Example `schedule.json`:**
 
@@ -65,14 +66,10 @@ This file contains the list of programs you want to record. It's an array of JSO
 
 ### `config.json`
 
-This file configures the `radigoSchedule` application itself. If it doesn't exist, a default one will be created on the first run.
+This file can be used for application-specific configuration. Currently, there are no configurable options. If the file doesn't exist, a default empty one will be created on the first run.
 
-- `radigo_command_path`: The path to the `radigo` executable. The default is `"radigo"`, which assumes it's in your system's PATH.
-
-**Example `config.json`:**
+**Example `config.json` (empty):**
 
 ```json
-{
-  "radigo_command_path": "/usr/local/bin/radigo"
-}
+{}
 ```

@@ -2,19 +2,19 @@ package internal
 
 import (
 	"encoding/json"
-	"fmt"
+	"fmt" // Added back
 	"log"
 	"os"
 )
 
 // Config holds the application's configuration.
 type Config struct {
-	RadigoCommandPath string `json:"radigo_command_path"`
+	// Future configuration options could go here
 }
 
 // DefaultConfig provides default values for the configuration.
 var DefaultConfig = Config{
-	RadigoCommandPath: "radigo", // Default to "radigo" assuming it's in PATH
+	// No default configuration needed currently
 }
 
 var AppConfig Config

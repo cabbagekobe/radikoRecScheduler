@@ -89,7 +89,7 @@ func ExecuteJob(radikoClient RadikoClient, entry ScheduleEntry, pastTime time.Ti
 	log.Printf("INFO: Found %d audio chunks.", len(chunklist))
 
 	// 4. Create a temporary directory for downloading AAC chunks
-	tempDir, err := os.MkdirTemp("", "radigo-chunks-")
+	tempDir, err := os.MkdirTemp("", "radikoRecScheduler-chunks-")
 	if err != nil {
 		return fmt.Errorf("failed to create temporary directory: %w", err)
 	}

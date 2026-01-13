@@ -59,7 +59,7 @@ The `schedule.json` file, which defines your radio program schedule, is searched
 3.  **Custom Path (Using `--file` flag):**
     *   You can always specify a custom path to your `schedule.json` using the `--file` flag:
         ```bash
-        ./radigoSchedule --file /path/to/your/custom/schedule.json
+        ./radikoRecScheduler --file /path/to/your/custom/schedule.json
         ```
 
 This file contains the list of programs you want to record. It's an array of JSON objects, where each object has the following properties:

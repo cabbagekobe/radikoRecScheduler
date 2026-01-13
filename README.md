@@ -1,4 +1,4 @@
-# Radigo Schedule
+# radikoRecScheduler
 
 **Please do not use this project for commercial use. Only for your personal, non-commercial use.**  
 **個人での視聴の目的以外で利用しないでください.**
@@ -31,13 +31,13 @@ This tool automatically calculates the most recent past broadcast time for radio
 3.  **Run the application:**
 
     ```bash
-    ./radigoSchedule
+    ./radikoRecScheduler
     ```
 
     You can also specify a different path for the schedule file using the `--file` flag:
 
     ```bash
-    ./radigoSchedule --file /path/to/your/schedule.json
+    ./radikoRecScheduler --file /path/to/your/schedule.json
     ```
     Recorded files will be saved in the `output/` directory.
 
@@ -48,13 +48,13 @@ This tool automatically calculates the most recent past broadcast time for radio
 The `schedule.json` file, which defines your radio program schedule, is searched for in the following order:
 
 1.  **XDG Base Directory (Recommended):**
-    *   The application first checks the path specified by the `XDG_CONFIG_HOME` environment variable. If set, it will look for `schedule.json` at `$XDG_CONFIG_HOME/radigoSchedule/schedule.json`.
-    *   If `XDG_CONFIG_HOME` is not set, it defaults to `~/.config/radigoSchedule/schedule.json` on Linux/macOS.
-    *   On Windows, this typically resolves to `%APPDATA%\radigoSchedule\schedule.json`.
-    *   The necessary directory structure (`radigoSchedule` within the config directory) will be created automatically if it doesn't exist.
+    *   The application first checks the path specified by the `XDG_CONFIG_HOME` environment variable. If set, it will look for `schedule.json` at `$XDG_CONFIG_HOME/radikoRecScheduler/schedule.json`.
+    *   If `XDG_CONFIG_HOME` is not set, it defaults to `~/.config/radikoRecScheduler/schedule.json` on Linux/macOS.
+    *   On Windows, this typically resolves to `%APPDATA%\radikoRecScheduler\schedule.json`.
+    *   The necessary directory structure (`radikoRecScheduler` within the config directory) will be created automatically if it doesn't exist.
 
 2.  **Current Working Directory (Fallback):**
-    *   If `schedule.json` is not found in the XDG Base Directory compliant location, the application will then look for `schedule.json` in the current directory where `radigoSchedule` is executed.
+    *   If `schedule.json` is not found in the XDG Base Directory compliant location, the application will then look for `schedule.json` in the current directory where `radikoRecScheduler` is executed.
 
 3.  **Custom Path (Using `--file` flag):**
     *   You can always specify a custom path to your `schedule.json` using the `--file` flag:

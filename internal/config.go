@@ -24,7 +24,7 @@ func GetScheduleConfigPath() (string, error) {
 		configHome = filepath.Join(homeDir, ".config")
 	}
 
-	appConfigDir := filepath.Join(configHome, "radigoSchedule")
+	appConfigDir := filepath.Join(configHome, "radikoRecScheduler")
 	if err := os.MkdirAll(appConfigDir, 0755); err != nil {
 		return "", fmt.Errorf("failed to create application config directory '%s': %w", appConfigDir, err)
 	}

@@ -7,7 +7,7 @@ import (
 	"os" // Added
 	"time"
 
-	"radigoSchedule/internal" // Assuming radigoSchedule is the module name
+	"radikoRecScheduler/internal" // Assuming radikoRecScheduler is the module name
 )
 
 func main() {

@@ -15,7 +15,7 @@ import (
 )
 
 // ExecuteJob runs the recording process for a given schedule entry and time.
-func ExecuteJob(entry ScheduleEntry, pastTime time.Time) error {
+func ExecuteJob(entry ScheduleEntry, pastTime time.Time, outputDir string) error {
 	log.Printf("INFO: Starting recording for: %s (%s) for past broadcast at %s", entry.ProgramName, entry.StationID, pastTime.Format("2006-01-02 15:04:05"))
 
 	ctx := context.Background()
@@ -80,8 +80,7 @@ func ExecuteJob(entry ScheduleEntry, pastTime time.Time) error {
 
 	// 6. Concatenate AAC files
 	log.Println("INFO: Concatenating AAC files...")
-	// Output directory check - assuming "output" directory in project root
-	outputDir := "output" // This should probably be configurable
+	// Output directory check
 	if _, err := os.Stat(outputDir); os.IsNotExist(err) {
 		if err := os.MkdirAll(outputDir, 0755); err != nil {
 			return fmt.Errorf("failed to create output directory '%s': %w", outputDir, err)
@@ -130,7 +129,7 @@ func bulkDownload(ctx context.Context, client *goradiko.Client, urls []string, d
 		defer file.Close()
 
 		if _, err := io.Copy(file, resp.Body); err != nil {
-			return nil, fmt.Errorf("failed to save chunk %d to file: %w", i, url, err)
+			return nil, fmt.Errorf("failed to save chunk %d to file: %s: %w", i, url, err)
 		}
 		downloadedFiles = append(downloadedFiles, filePath)
 	}

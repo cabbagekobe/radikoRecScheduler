@@ -34,7 +34,7 @@ func main() {
 			continue
 		}
 
-		if err := internal.ExecuteJob(entry, recentPastTime); err != nil {
+		if err := internal.ExecuteJob(entry, recentPastTime, "output"); err != nil {
 			log.Printf("Error executing job for '%s': %v", entry.ProgramName, err)
 		}
 	}

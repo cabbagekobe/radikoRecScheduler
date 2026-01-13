@@ -1,5 +1,8 @@
 # Radigo Schedule
 
+**Please do not use this project for commercial use. Only for your personal, non-commercial use.**  
+**個人での視聴の目的以外で利用しないでください.**
+
 This tool automatically calculates the most recent past broadcast time for radio programs defined in a `schedule.json` file and directly records them using the `go-radiko` and `radigo` Go libraries.
 
 ## Features
@@ -8,6 +11,10 @@ This tool automatically calculates the most recent past broadcast time for radio
 - For each program, calculates the most recent past broadcast time.
 - Directly records the program by integrating with `go-radiko` (for API interactions and stream URLs) and `radigo` (for M3U8 chunklist parsing) Go libraries.
 - Downloads and concatenates AAC audio chunks into a single output file.
+
+## Requirements
+
+- **Go**: Version 1.22 or higher is recommended to build and run the application.
 
 ## Usage
 
@@ -34,7 +41,7 @@ This tool automatically calculates the most recent past broadcast time for radio
     ```
     Recorded files will be saved in the `output/` directory.
 
-## Configuration
+## Schedule File Configuration
 
 ### `schedule.json`
 

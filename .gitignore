@@ -32,7 +32,12 @@
 .DS_Store
 
 # Application-specific ignores
-/radigoSchedule # The executable name if built with `go build`
+# The executable name if built with `go build`
+/radigoSchedule
 /output/
-config.json # Keep config.json out of version control
-schedule.json # Keep schedule.json out of version control, as it's user-specific
+
+# Keep config.json out of version control
+config.json
+
+# Keep schedule.json out of version control, as it's user-specific
+schedule.json

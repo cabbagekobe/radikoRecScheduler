@@ -123,7 +123,24 @@ func ExecuteJob(radikoClient RadikoClient, entry ScheduleEntry, pastTime time.Ti
 		}
 	}
 
-	outputFileName := fmt.Sprintf("%s-%s-%s.aac", pastTime.Format("20060102150405"), entry.StationID, entry.ProgramName)
+	// Get program name from radiko API
+	programData, err := GetProgramGuide(entry.StationID)
+	var programName string
+	if err != nil {
+		log.Printf("WARNING: Failed to get program guide for station %s, falling back to schedule.json: %v", entry.StationID, err)
+		programName = entry.ProgramName
+	} else {
+		name, err := FindProgramTitle(programData, entry.StartTime, entry.DayOfWeek)
+		if err != nil {
+			log.Printf("WARNING: Failed to find program name for %s at %s on %s, falling back to schedule.json: %v", entry.StationID, entry.StartTime, entry.DayOfWeek, err)
+			programName = entry.ProgramName
+		} else {
+			programName = name
+			log.Printf("INFO: Successfully found program name: %s", programName)
+		}
+	}
+
+	outputFileName := fmt.Sprintf("%s-%s-%s.aac", pastTime.Format("20060102150405"), entry.StationID, programName)
 	outputFilePath := filepath.Join(outputDir, outputFileName)
 
 	if err := concatAACFiles(downloadedFiles, outputFilePath); err != nil {

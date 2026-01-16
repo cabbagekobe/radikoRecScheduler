@@ -98,7 +98,13 @@ func FindProgramTitle(programData []byte, targetTime, targetDayOfWeek string) (s
 			progStartTime := startTime.Format("1504")
 			progDayOfWeek := startTime.Weekday().String()[:3]
 
-			if progStartTime == targetTime && strings.EqualFold(progDayOfWeek, targetDayOfWeek) {
+			// Trim targetTime to HHmm if it's in HHmmss format
+			trimmedTargetTime := targetTime
+			if len(trimmedTargetTime) > 4 {
+				trimmedTargetTime = trimmedTargetTime[:4]
+			}
+
+			if progStartTime == trimmedTargetTime && strings.EqualFold(progDayOfWeek, targetDayOfWeek) {
 				return prog.Title, nil
 			}
 		}

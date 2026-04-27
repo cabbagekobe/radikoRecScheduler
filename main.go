@@ -2,12 +2,12 @@ package main
 
 import (
 	"flag"
-	"fmt" // Added
+	"fmt"
 	"log"
-	"os" // Added
+	"os"
 	"time"
 
-	"radikoRecScheduler/internal" // Assuming radikoRecScheduler is the module name
+	"radikoRecScheduler/internal"
 )
 
 func main() {
@@ -25,7 +25,15 @@ func main() {
 		}
 		return path
 	}(), "Path to the schedule JSON file. Defaults to XDG config directory.")
+	checkOnly := flag.Bool("check", false, "Verify rec_radiko_ts.sh and required runtime tools are installed, then exit.")
 	flag.Parse()
+
+	if *checkOnly {
+		if err := internal.NewChecker().Check(os.Stdout); err != nil {
+			os.Exit(1)
+		}
+		return
+	}
 
 	scheduleEntries, err := internal.LoadSchedule(*scheduleFilePath)
 	if err != nil {
@@ -45,6 +53,8 @@ func main() {
 		}
 	}
 
+	recorder := internal.NewRecRadikoTSRecorder()
+
 	now := time.Now().In(internal.JST)
 	for _, entry := range scheduleEntries {
 		recentPastTime, err := internal.CalculateRecentPastRunTime(entry, now)
@@ -53,13 +63,7 @@ func main() {
 			continue
 		}
 
-		// Create a new goradiko client for each job. The ExecuteJob will handle token authorization.
-		radikoClient, err := internal.NewGoradikoClient("") // Token will be authorized inside ExecuteJob
-		if err != nil {
-			log.Fatalf("Failed to create Radiko client for job: %v", err)
-		}
-
-		if err := internal.ExecuteJob(radikoClient, entry, recentPastTime, "output"); err != nil {
+		if err := internal.ExecuteJob(recorder, entry, recentPastTime, "output"); err != nil {
 			log.Printf("Error executing job for '%s': %v", entry.ProgramName, err)
 		}
 	}

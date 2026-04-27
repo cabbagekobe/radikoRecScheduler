@@ -3,220 +3,67 @@ package internal
 import (
 	"context"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"os"
 	"path/filepath"
 	"time"
-
-	"github.com/briandowns/spinner"            // Import spinner
-	goradiko "github.com/yyoshiki41/go-radiko" // Alias to avoid conflict with our internal package name
 )
 
-type RadikoClient interface {
-	AuthorizeToken(ctx context.Context) (string, error)
-	TimeshiftPlaylistM3U8(ctx context.Context, stationID string, pastTime time.Time) (string, error)
-	GetChunklistFromM3U8(uri string) ([]string, error)
-	Do(req *http.Request) (*http.Response, error) // For bulkDownload
-}
-
-// Concrete goradiko client wrapper
-type goradikoClient struct {
-	client *goradiko.Client
-}
-
-func NewGoradikoClient(token string) (RadikoClient, error) {
-	client, err := goradiko.New(token)
-	if err != nil {
-		return nil, err
-	}
-	return &goradikoClient{client: client}, nil
-}
-
-func (g *goradikoClient) AuthorizeToken(ctx context.Context) (string, error) {
-	return g.client.AuthorizeToken(ctx)
-}
-
-func (g *goradikoClient) TimeshiftPlaylistM3U8(ctx context.Context, stationID string, pastTime time.Time) (string, error) {
-	return g.client.TimeshiftPlaylistM3U8(ctx, stationID, pastTime)
-}
-
-func (g *goradikoClient) GetChunklistFromM3U8(uri string) ([]string, error) {
-	return goradiko.GetChunklistFromM3U8(uri)
-}
-
-func (g *goradikoClient) Do(req *http.Request) (*http.Response, error) {
-	return g.client.Do(req)
-}
-
-// ExecuteJob runs the recording process for a given schedule entry and time.
-// It now accepts a RadikoClient interface for dependency injection.
-func ExecuteJob(radikoClient RadikoClient, entry ScheduleEntry, pastTime time.Time, outputDir string) error {
+// ExecuteJob resolves the program metadata for a schedule entry and delegates
+// the actual recording to the supplied Recorder.
+func ExecuteJob(rec Recorder, entry ScheduleEntry, pastTime time.Time, outputDir string) error {
 	log.Printf("INFO: Starting recording for: %s (%s) for past broadcast at %s", entry.ProgramName, entry.StationID, pastTime.Format("2006-01-02 15:04:05"))
 
-	// Get program name from radiko API to check for existing files first.
-	programData, err := GetProgramGuide(entry.StationID)
-	var programName string
-	if err != nil {
-		log.Printf("WARNING: Failed to get program guide for station %s, falling back to schedule.json: %v", entry.StationID, err)
-		programName = entry.ProgramName
-	} else {
-		dayOfWeek, err := toEnglishDayOfWeek(entry.DayOfWeek)
-		if err != nil {
-			log.Printf("WARNING: %v, falling back to schedule.json", err)
-			programName = entry.ProgramName
-		} else {
-			name, err := FindProgramTitle(programData, entry.StartTime, dayOfWeek)
-			if err != nil {
-				log.Printf("WARNING: Failed to find program name for %s at %s on %s, falling back to schedule.json: %v", entry.StationID, entry.StartTime, entry.DayOfWeek, err)
-				programName = entry.ProgramName
-			} else {
-				programName = name
-				log.Printf("INFO: Successfully found program name: %s", programName)
-			}
-		}
-	}
+	programName := resolveProgramName(entry)
 
-	outputFileName := fmt.Sprintf("%s-%s-%s.aac", pastTime.Format("20060102150405"), entry.StationID, programName)
+	outputFileName := fmt.Sprintf("%s-%s-%s.m4a", pastTime.Format("20060102150405"), entry.StationID, programName)
 	outputFilePath := filepath.Join(outputDir, outputFileName)
 
-	// Check if the file already exists before proceeding to download.
 	if _, err := os.Stat(outputFilePath); err == nil {
 		log.Printf("INFO: File already exists, skipping: %s", outputFilePath)
 		return nil
 	}
 
-	ctx := context.Background()
-
-	// 1. Authenticate to get the auth token
-	log.Println("INFO: Authorizing Radiko token...")
-	_, err = radikoClient.AuthorizeToken(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to authorize Radiko token: %w", err)
-	}
-	log.Println("INFO: Radiko token authorized successfully.")
-
-	// 2. Get M3U8 Playlist URI
-	log.Println("INFO: Getting M3U8 playlist URI...")
-	uri, err := radikoClient.TimeshiftPlaylistM3U8(ctx, entry.StationID, pastTime)
-	if err != nil {
-		return fmt.Errorf("failed to get timeshift M3U8 playlist URI for %s: %w", entry.ProgramName, err)
-	}
-	log.Printf("INFO: Got M3U8 URI: %s", uri)
-
-	// 3. Get Chunklist from M3U8
-	log.Println("INFO: Getting chunklist from M3U8...")
-	chunklist, err := radikoClient.GetChunklistFromM3U8(uri)
-	if err != nil {
-		return fmt.Errorf("failed to get chunklist from M3U8 for %s: %w", entry.ProgramName, err)
-	}
-	log.Printf("INFO: Found %d audio chunks.", len(chunklist))
-
-	// 4. Create a temporary directory for downloading AAC chunks
-	tempDir, err := os.MkdirTemp("", "radikoRecScheduler-chunks-")
-	if err != nil {
-		return fmt.Errorf("failed to create temporary directory: %w", err)
-	}
-	defer func() {
-		log.Printf("INFO: Cleaning up temporary directory: %s", tempDir)
-		if err := os.RemoveAll(tempDir); err != nil {
-			log.Printf("WARNING: Failed to remove temporary directory '%s': %v", tempDir, err)
-		}
-	}()
-	log.Printf("INFO: Created temporary directory: %s", tempDir)
-
-	// 5. Bulk download AAC files
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond)
-	s.Suffix = fmt.Sprintf(" Downloading %d chunks...", len(chunklist))
-	s.Start()
-
-	downloadedFiles, err := bulkDownload(ctx, radikoClient, chunklist, tempDir, s)
-	if err != nil {
-		s.Stop()
-		return fmt.Errorf("failed to bulk download AAC chunks for %s: %w", entry.ProgramName, err)
-	}
-	s.Stop()
-	log.Printf("INFO: Successfully downloaded %d AAC chunks.", len(downloadedFiles))
-
-	// 6. Concatenate AAC files
-	log.Println("INFO: Concatenating AAC files...")
-	if _, err := os.Stat(outputDir); os.IsNotExist(err) {
-		if err := os.MkdirAll(outputDir, 0755); err != nil {
-			return fmt.Errorf("failed to create output directory '%s': %w", outputDir, err)
-		}
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return fmt.Errorf("failed to create output directory '%s': %w", outputDir, err)
 	}
 
-	if err := concatAACFiles(downloadedFiles, outputFilePath); err != nil {
-		return fmt.Errorf("failed to concatenate AAC files for %s: %w", entry.ProgramName, err)
+	programURL := fmt.Sprintf("https://radiko.jp/#!/ts/%s/%s", entry.StationID, pastTime.Format("20060102150405"))
+	log.Printf("INFO: Recording from %s to %s", programURL, outputFilePath)
+
+	if err := rec.Record(context.Background(), programURL, outputFilePath); err != nil {
+		return fmt.Errorf("failed to record %s: %w", entry.ProgramName, err)
 	}
 	log.Printf("INFO: Successfully recorded and saved to: %s", outputFilePath)
-
 	return nil
 }
 
-// bulkDownload downloads a list of URLs to a specified directory.
-// It returns the list of paths to the downloaded files.
-func bulkDownload(ctx context.Context, client RadikoClient, urls []string, destDir string, s *spinner.Spinner) ([]string, error) {
-	downloadedFiles := make([]string, 0, len(urls))
-	for i, url := range urls {
-		s.Suffix = fmt.Sprintf(" Downloading chunk %d/%d...", i+1, len(urls)) // Update spinner suffix
-		fileName := fmt.Sprintf("chunk_%04d.aac", i)
-		filePath := filepath.Join(destDir, fileName)
+// getProgramGuide is the program-guide fetcher used by ExecuteJob. It is a
+// package-level variable so tests can stub it without touching the network.
+var getProgramGuide = GetProgramGuide
 
-		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create request for chunk %d (%s): %w", i, url, err)
-		}
-
-		resp, err := client.Do(req)
-		if err != nil {
-			return nil, fmt.Errorf("failed to download chunk %d (%s): %w", i, url, err)
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("failed to download chunk %d (%s): HTTP status %d", i, url, resp.StatusCode)
-		}
-
-		file, err := os.Create(filePath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create file for chunk %d: %w", i, err)
-		}
-		defer file.Close()
-
-		if _, err := io.Copy(file, resp.Body); err != nil {
-			return nil, fmt.Errorf("failed to save chunk %d to file: %s: %w", i, url, err)
-		}
-		downloadedFiles = append(downloadedFiles, filePath)
-	}
-	return downloadedFiles, nil
-}
-
-// concatAACFiles concatenates multiple AAC files into a single output file.
-func concatAACFiles(inputFiles []string, outputFile string) error {
-	outFile, err := os.Create(outputFile)
+// resolveProgramName returns the program title from the radiko program guide,
+// falling back to the schedule entry's program name on any error.
+func resolveProgramName(entry ScheduleEntry) string {
+	programData, err := getProgramGuide(entry.StationID)
 	if err != nil {
-		return fmt.Errorf("failed to create output file '%s': %w", outputFile, err)
+		log.Printf("WARNING: Failed to get program guide for station %s, falling back to schedule.json: %v", entry.StationID, err)
+		return entry.ProgramName
 	}
-	defer outFile.Close()
-
-	for _, inFile := range inputFiles {
-		srcFile, err := os.Open(inFile)
-		if err != nil {
-			return fmt.Errorf("failed to open input file '%s': %w", inFile, err)
-		}
-		defer srcFile.Close() // Defer inside loop, but be careful with many files
-
-		if _, err := io.Copy(outFile, srcFile); err != nil {
-			return fmt.Errorf("failed to concatenate file '%s': %w", inFile, err)
-		}
+	dayOfWeek, err := toEnglishDayOfWeek(entry.DayOfWeek)
+	if err != nil {
+		log.Printf("WARNING: %v, falling back to schedule.json", err)
+		return entry.ProgramName
 	}
-	log.Printf("INFO: Finished concatenating %d files.", len(inputFiles))
-	return nil
+	name, err := FindProgramTitle(programData, entry.StartTime, dayOfWeek)
+	if err != nil {
+		log.Printf("WARNING: Failed to find program name for %s at %s on %s, falling back to schedule.json: %v", entry.StationID, entry.StartTime, entry.DayOfWeek, err)
+		return entry.ProgramName
+	}
+	log.Printf("INFO: Successfully found program name: %s", name)
+	return name
 }
 
-// toEnglishDayOfWeek converts a Japanese day of the week to its English three-letter abbreviation.
 func toEnglishDayOfWeek(dayOfWeek string) (string, error) {
 	switch dayOfWeek {
 	case "日":

@@ -2,362 +2,186 @@ package internal
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"io"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/briandowns/spinner"
 )
 
-// MockRadikoClient is a mock implementation of the RadikoClient interface for testing.
-type MockRadikoClient struct {
-	AuthTokenFn             func(ctx context.Context) (string, error)
-	TimeshiftPlaylistM3U8Fn func(ctx context.Context, stationID string, pastTime time.Time) (string, error)
-	GetChunklistFromM3U8Fn  func(uri string) ([]string, error)
-	DoFn                    func(req *http.Request) (*http.Response, error)
+// MockRecorder records the arguments it was called with. By default it
+// returns nil; tests that need other behaviour set RecordFn explicitly.
+type MockRecorder struct {
+	RecordFn  func(ctx context.Context, programURL, outputPath string) error
+	GotURL    string
+	GotOutput string
+	CallCount int
 }
 
-func (m *MockRadikoClient) AuthorizeToken(ctx context.Context) (string, error) {
-	if m.AuthTokenFn != nil {
-		return m.AuthTokenFn(ctx)
+func (m *MockRecorder) Record(ctx context.Context, programURL, outputPath string) error {
+	m.CallCount++
+	m.GotURL = programURL
+	m.GotOutput = outputPath
+	if m.RecordFn != nil {
+		return m.RecordFn(ctx, programURL, outputPath)
 	}
-	return "mock_auth_token", nil // Default success
+	return nil
 }
 
-func (m *MockRadikoClient) TimeshiftPlaylistM3U8(ctx context.Context, stationID string, pastTime time.Time) (string, error) {
-	if m.TimeshiftPlaylistM3U8Fn != nil {
-		return m.TimeshiftPlaylistM3U8Fn(ctx, stationID, pastTime)
+// stubGetProgramGuide replaces the package-level getProgramGuide for the
+// duration of the test, restoring it on cleanup.
+func stubGetProgramGuide(t *testing.T, response []byte, err error) {
+	t.Helper()
+	orig := getProgramGuide
+	getProgramGuide = func(stationID string) ([]byte, error) {
+		return response, err
 	}
-	return "http://mock.m3u8/playlist.m3u8", nil // Default success
+	t.Cleanup(func() { getProgramGuide = orig })
 }
 
-func (m *MockRadikoClient) GetChunklistFromM3U8(uri string) ([]string, error) {
-	if m.GetChunklistFromM3U8Fn != nil {
-		return m.GetChunklistFromM3U8Fn(uri)
-	}
-	return []string{"http://mock.chunk/chunk1.aac", "http://mock.chunk/chunk2.aac"}, nil // Default success
-}
+func TestExecuteJob_SuccessBuildsURLAndOutputPath(t *testing.T) {
+	stubGetProgramGuide(t, nil, errors.New("network disabled in test"))
+	tempOutputDir := t.TempDir()
 
-func (m *MockRadikoClient) Do(req *http.Request) (*http.Response, error) {
-	if m.DoFn != nil {
-		return m.DoFn(req)
-	}
-	// Default mock HTTP response for successful download
-	return &http.Response{
-		StatusCode: http.StatusOK,
-		Body:       io.NopCloser(strings.NewReader("DUMMY AAC CHUNK CONTENT")),
-	}, nil
-}
-
-func TestExecuteJob(t *testing.T) {
-	mockNow := time.Date(2026, time.January, 13, 10, 0, 0, 0, JST) // Tuesday
-
-	tests := []struct {
-		name          string
-		mockClient    *MockRadikoClient
-		entry         ScheduleEntry
-		pastTime      time.Time
-		outputDir     string
-		expectError   bool
-		expectedError string
-	}{
-		{
-			name: "Successful execution",
-			mockClient: &MockRadikoClient{
-				AuthTokenFn: func(ctx context.Context) (string, error) { return "mock_auth_token", nil },
-				TimeshiftPlaylistM3U8Fn: func(ctx context.Context, stationID string, pastTime time.Time) (string, error) {
-					return "http://mock.m3u8/playlist.m3u8", nil
-				},
-				GetChunklistFromM3U8Fn: func(uri string) ([]string, error) {
-					return []string{
-						"http://mock.chunk/chunk1.aac",
-						"http://mock.chunk/chunk2.aac",
-					}, nil
-				},
-				DoFn: func(req *http.Request) (*http.Response, error) {
-					return &http.Response{
-						StatusCode: http.StatusOK,
-						Body:       io.NopCloser(strings.NewReader("DUMMY AAC CHUNK CONTENT")),
-					}, nil
-				},
-			},
-			entry: ScheduleEntry{
-				ProgramName: "Test Program",
-				StationID:   "ST1",
-			},
-			pastTime:    mockNow.Add(-24 * time.Hour), // Monday
-			outputDir:   "output",
-			expectError: false,
-		},
-		{
-			name: "Authentication failure",
-			mockClient: &MockRadikoClient{
-				AuthTokenFn: func(ctx context.Context) (string, error) { return "", fmt.Errorf("auth failed") },
-			},
-			entry: ScheduleEntry{
-				ProgramName: "Test Program",
-				StationID:   "ST1",
-			},
-			pastTime:      mockNow,
-			outputDir:     "output",
-			expectError:   true,
-			expectedError: "failed to authorize Radiko token: auth failed",
-		},
-		{
-			name: "TimeshiftPlaylistM3U8 failure",
-			mockClient: &MockRadikoClient{
-				AuthTokenFn: func(ctx context.Context) (string, error) { return "mock_auth_token", nil },
-				TimeshiftPlaylistM3U8Fn: func(ctx context.Context, stationID string, pastTime time.Time) (string, error) {
-					return "", fmt.Errorf("m3u8 failed")
-				},
-			},
-			entry: ScheduleEntry{
-				ProgramName: "Test Program",
-				StationID:   "ST1",
-			},
-			pastTime:      mockNow,
-			outputDir:     "output",
-			expectError:   true,
-			expectedError: "failed to get timeshift M3U8 playlist URI for Test Program: m3u8 failed",
-		},
-		{
-			name: "GetChunklistFromM3U8 failure",
-			mockClient: &MockRadikoClient{
-				AuthTokenFn: func(ctx context.Context) (string, error) { return "mock_auth_token", nil },
-				TimeshiftPlaylistM3U8Fn: func(ctx context.Context, stationID string, pastTime time.Time) (string, error) {
-					return "http://mock.m3u8/playlist.m3u8", nil
-				},
-				GetChunklistFromM3U8Fn: func(uri string) ([]string, error) {
-					return nil, fmt.Errorf("chunklist failed")
-				},
-			},
-			entry: ScheduleEntry{
-				ProgramName: "Test Program",
-				StationID:   "ST1",
-			},
-			pastTime:      mockNow,
-			outputDir:     "output",
-			expectError:   true,
-			expectedError: "failed to get chunklist from M3U8 for Test Program: chunklist failed",
-		},
-		{
-			name: "Bulk download failure (HTTP error)",
-			mockClient: &MockRadikoClient{
-				AuthTokenFn: func(ctx context.Context) (string, error) { return "mock_auth_token", nil },
-				TimeshiftPlaylistM3U8Fn: func(ctx context.Context, stationID string, pastTime time.Time) (string, error) {
-					return "http://mock.m3u8/playlist.m3u8", nil
-				},
-				GetChunklistFromM3U8Fn: func(uri string) ([]string, error) {
-					return []string{"http://mock.chunk/chunk1.aac"}, nil
-				},
-				DoFn: func(req *http.Request) (*http.Response, error) {
-					return &http.Response{
-						StatusCode: http.StatusInternalServerError,
-						Body:       io.NopCloser(strings.NewReader("")),
-					}, nil
-				},
-			},
-			entry: ScheduleEntry{
-				ProgramName: "Test Program",
-				StationID:   "ST1",
-			},
-			pastTime:      mockNow,
-			outputDir:     "output",
-			expectError:   true,
-			expectedError: "failed to bulk download AAC chunks for Test Program: failed to download chunk 0 (http://mock.chunk/chunk1.aac): HTTP status 500",
-		},
-		{
-			name: "Bulk download failure (network error)",
-			mockClient: &MockRadikoClient{
-				AuthTokenFn: func(ctx context.Context) (string, error) { return "mock_auth_token", nil },
-				TimeshiftPlaylistM3U8Fn: func(ctx context.Context, stationID string, pastTime time.Time) (string, error) {
-					return "http://mock.m3u8/playlist.m3u8", nil
-				},
-				GetChunklistFromM3U8Fn: func(uri string) ([]string, error) {
-					return []string{"http://mock.chunk/chunk1.aac"}, nil
-				},
-				DoFn: func(req *http.Request) (*http.Response, error) {
-					return nil, fmt.Errorf("network error")
-				},
-			},
-			entry: ScheduleEntry{
-				ProgramName: "Test Program",
-				StationID:   "ST1",
-			},
-			pastTime:      mockNow,
-			outputDir:     "output",
-			expectError:   true,
-			expectedError: "failed to bulk download AAC chunks for Test Program: failed to download chunk 0 (http://mock.chunk/chunk1.aac): network error",
-		},
+	pastTime := time.Date(2026, time.January, 12, 1, 0, 0, 0, JST) // Mon
+	entry := ScheduleEntry{
+		ProgramName: "Test Program",
+		DayOfWeek:   "月",
+		StartTime:   "010000",
+		StationID:   "ST1",
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create a temporary output directory for each test
-			tempOutputDir, err := os.MkdirTemp("", "test-output-")
-			if err != nil {
-				t.Fatalf("Failed to create temp output dir: %v", err)
-			}
-			defer os.RemoveAll(tempOutputDir)
+	rec := &MockRecorder{}
+	if err := ExecuteJob(rec, entry, pastTime, tempOutputDir); err != nil {
+		t.Fatalf("ExecuteJob returned unexpected error: %v", err)
+	}
 
-			err = ExecuteJob(tt.mockClient, tt.entry, tt.pastTime, tempOutputDir)
+	wantURL := "https://radiko.jp/#!/ts/ST1/20260112010000"
+	if rec.GotURL != wantURL {
+		t.Errorf("programURL = %q, want %q", rec.GotURL, wantURL)
+	}
 
-			if tt.expectError {
-				if err == nil {
-					t.Errorf("expected an error for %s, but got none", tt.name)
-				} else if !strings.Contains(err.Error(), tt.expectedError) {
-					t.Errorf("for %s, expected error containing '%s', but got '%v'", tt.name, tt.expectedError, err)
-				}
-			} else {
-				if err != nil {
-					t.Errorf("did not expect an error for %s, but got: %v", tt.name, err)
-				}
-				// Verify output file exists
-				expectedFileName := fmt.Sprintf("%s-%s-%s.aac", tt.pastTime.Format("20060102150405"), tt.entry.StationID, tt.entry.ProgramName)
-				outputFilePath := filepath.Join(tempOutputDir, expectedFileName)
-				if _, err := os.Stat(outputFilePath); os.IsNotExist(err) {
-					t.Errorf("expected output file %s to exist, but it did not", outputFilePath)
-				}
-
-			}
-		})
+	// With the program guide stubbed to error, the fallback is entry.ProgramName.
+	wantOutput := filepath.Join(tempOutputDir, "20260112010000-ST1-Test Program.m4a")
+	if rec.GotOutput != wantOutput {
+		t.Errorf("outputPath = %q, want %q", rec.GotOutput, wantOutput)
 	}
 }
 
-// TestBulkDownload uses MockRadikoClient now
-func TestBulkDownload(t *testing.T) {
-	// Create a temporary directory for downloads
-	tempDir, err := os.MkdirTemp("", "bulk-download-test-")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+func TestExecuteJob_UsesProgramTitleFromGuideWhenAvailable(t *testing.T) {
+	guideXML := []byte(`<?xml version="1.0" encoding="UTF-8"?>
+<radiko>
+  <stations>
+    <station id="ST1">
+      <name>Station 1</name>
+      <progs>
+        <date>20260112</date>
+        <prog ft="20260112010000" to="20260112030000" ftl="0100" tol="0300" dur="7200">
+          <title>Looked Up Title</title>
+        </prog>
+      </progs>
+    </station>
+  </stations>
+</radiko>`)
+	stubGetProgramGuide(t, guideXML, nil)
+	tempOutputDir := t.TempDir()
 
-	// Create a mock HTTP server to serve chunks
-	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasSuffix(r.URL.Path, ".aac") {
-			w.WriteHeader(http.StatusOK)
-			// Serve a small dummy AAC content
-			_, _ = w.Write([]byte("DUMMY AAC CHUNK CONTENT"))
-		} else {
-			w.WriteHeader(http.StatusNotFound)
-		}
-	}))
-	defer mockServer.Close()
-
-	// Create a MockRadikoClient that uses the mockServer.Client() for DoFn
-	mockClient := &MockRadikoClient{
-		DoFn: func(req *http.Request) (*http.Response, error) {
-			return mockServer.Client().Do(req)
-		},
+	pastTime := time.Date(2026, time.January, 12, 1, 0, 0, 0, JST) // Mon
+	entry := ScheduleEntry{
+		ProgramName: "Fallback Name",
+		DayOfWeek:   "月",
+		StartTime:   "010000",
+		StationID:   "ST1",
 	}
 
-	// Prepare a chunklist with URLs from the mock server
-	chunklist := []string{
-		fmt.Sprintf("%s/chunk1.aac", mockServer.URL),
-		fmt.Sprintf("%s/chunk2.aac", mockServer.URL),
-		fmt.Sprintf("%s/chunk3.aac", mockServer.URL),
+	rec := &MockRecorder{}
+	if err := ExecuteJob(rec, entry, pastTime, tempOutputDir); err != nil {
+		t.Fatalf("ExecuteJob returned unexpected error: %v", err)
 	}
 
-	ctx := context.Background()
-	s := spinner.New(spinner.CharSets[14], 100*time.Millisecond) // Mock spinner
-	s.Start()
-	defer s.Stop()
-
-	downloadedFiles, err := bulkDownload(ctx, mockClient, chunklist, tempDir, s)
-	if err != nil {
-		t.Fatalf("bulkDownload failed: %v", err)
-	}
-
-	// Verify downloads
-	if len(downloadedFiles) != len(chunklist) {
-		t.Errorf("Expected %d files, got %d", len(chunklist), len(downloadedFiles))
-	}
-
-	for _, file := range downloadedFiles {
-		if _, err := os.Stat(file); os.IsNotExist(err) {
-			t.Errorf("Downloaded file %s does not exist", file)
-		}
-		content, err := os.ReadFile(file)
-		if err != nil {
-			t.Errorf("Failed to read downloaded file %s: %v", file, err)
-		}
-		if string(content) != "DUMMY AAC CHUNK CONTENT" {
-			t.Errorf("Downloaded file %s has wrong content: %s", file, string(content))
-		}
+	wantOutput := filepath.Join(tempOutputDir, "20260112010000-ST1-Looked Up Title.m4a")
+	if rec.GotOutput != wantOutput {
+		t.Errorf("outputPath = %q, want %q", rec.GotOutput, wantOutput)
 	}
 }
 
-func TestConcatAACFiles(t *testing.T) {
-	// Create a temporary directory for test files
-	tempDir, err := os.MkdirTemp("", "concat-aac-test-")
-	if err != nil {
-		t.Fatalf("Failed to create temp dir: %v", err)
-	}
-	defer os.RemoveAll(tempDir)
+func TestExecuteJob_SkipsWhenOutputFileExists(t *testing.T) {
+	stubGetProgramGuide(t, nil, errors.New("network disabled in test"))
+	tempOutputDir := t.TempDir()
 
-	// Create dummy input AAC files
-	inputFiles := make([]string, 3)
-	expectedContent := ""
-	for i := 0; i < 3; i++ {
-		filePath := filepath.Join(tempDir, fmt.Sprintf("input_%d.aac", i))
-		content := fmt.Sprintf("CHUNK_%d", i+1)
-		if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
-			t.Fatalf("Failed to write dummy input file %s: %v", filePath, err)
-		}
-		inputFiles[i] = filePath
-		expectedContent += content
+	pastTime := time.Date(2026, time.January, 12, 1, 0, 0, 0, JST)
+	entry := ScheduleEntry{
+		ProgramName: "Existing Program",
+		DayOfWeek:   "月",
+		StartTime:   "010000",
+		StationID:   "ST1",
 	}
 
-	outputFile := filepath.Join(tempDir, "output.aac")
-
-	err = concatAACFiles(inputFiles, outputFile)
-	if err != nil {
-		t.Fatalf("concatAACFiles failed: %v", err)
+	fallbackName := fmt.Sprintf("%s-%s-%s.m4a", pastTime.Format("20060102150405"), entry.StationID, entry.ProgramName)
+	if err := os.WriteFile(filepath.Join(tempOutputDir, fallbackName), []byte("EXISTING"), 0644); err != nil {
+		t.Fatalf("setup: %v", err)
 	}
 
-	// Verify output file
-	if _, err := os.Stat(outputFile); os.IsNotExist(err) {
-		t.Errorf("Output file %s does not exist", outputFile)
+	rec := &MockRecorder{
+		RecordFn: func(ctx context.Context, programURL, outputPath string) error {
+			t.Fatalf("Record should not be called when output already exists; got url=%q out=%q", programURL, outputPath)
+			return nil
+		},
+	}
+	if err := ExecuteJob(rec, entry, pastTime, tempOutputDir); err != nil {
+		t.Fatalf("ExecuteJob returned unexpected error: %v", err)
+	}
+	if rec.CallCount != 0 {
+		t.Errorf("expected Record not to be called, but it was called %d times", rec.CallCount)
+	}
+}
+
+func TestExecuteJob_PropagatesRecorderError(t *testing.T) {
+	stubGetProgramGuide(t, nil, errors.New("network disabled in test"))
+	tempOutputDir := t.TempDir()
+
+	pastTime := time.Date(2026, time.January, 12, 1, 0, 0, 0, JST)
+	entry := ScheduleEntry{
+		ProgramName: "Failing Program",
+		DayOfWeek:   "月",
+		StartTime:   "010000",
+		StationID:   "ST1",
 	}
 
-	actualContent, err := os.ReadFile(outputFile)
-	if err != nil {
-		t.Fatalf("Failed to read output file %s: %v", outputFile, err)
+	rec := &MockRecorder{
+		RecordFn: func(ctx context.Context, programURL, outputPath string) error {
+			return fmt.Errorf("rec_radiko_ts.sh exited 1")
+		},
 	}
-
-	if string(actualContent) != expectedContent {
-		t.Errorf("Concatenated content is wrong. Got '%s', want '%s'", string(actualContent), expectedContent)
-	}
-
-	// Test case for non-existent input file
-	nonExistentInputFiles := []string{filepath.Join(tempDir, "non_existent.aac")}
-	err = concatAACFiles(nonExistentInputFiles, filepath.Join(tempDir, "error_output.aac"))
+	err := ExecuteJob(rec, entry, pastTime, tempOutputDir)
 	if err == nil {
-		t.Error("concatAACFiles did not return an error for non-existent input file")
+		t.Fatal("expected error from failing recorder, got nil")
 	}
-	if err != nil && !strings.Contains(err.Error(), "failed to open input file") {
-		t.Errorf("concatAACFiles returned wrong error type for non-existent input: %v", err)
+	if !strings.Contains(err.Error(), "rec_radiko_ts.sh exited 1") {
+		t.Errorf("error %q does not contain expected substring", err.Error())
+	}
+}
+
+func TestExecuteJob_CreatesMissingOutputDir(t *testing.T) {
+	stubGetProgramGuide(t, nil, errors.New("network disabled in test"))
+	parent := t.TempDir()
+	nestedDir := filepath.Join(parent, "does", "not", "exist", "yet")
+
+	pastTime := time.Date(2026, time.January, 12, 1, 0, 0, 0, JST)
+	entry := ScheduleEntry{
+		ProgramName: "Nested Program",
+		DayOfWeek:   "月",
+		StartTime:   "010000",
+		StationID:   "ST1",
 	}
 
-	// Test case for output file creation error (e.g., permissions)
-	readOnlyDir := filepath.Join(tempDir, "read-only")
-	if err := os.Mkdir(readOnlyDir, 0444); err != nil { // Create read-only directory
-		t.Fatalf("Failed to create read-only dir: %v", err)
+	rec := &MockRecorder{}
+	if err := ExecuteJob(rec, entry, pastTime, nestedDir); err != nil {
+		t.Fatalf("ExecuteJob returned unexpected error: %v", err)
 	}
-	defer os.RemoveAll(readOnlyDir)
-
-	err = concatAACFiles(inputFiles, filepath.Join(readOnlyDir, "output.aac"))
-	if err == nil {
-		t.Error("concatAACFiles did not return an error for output file creation failure")
-	}
-	if err != nil && !strings.Contains(err.Error(), "failed to create output file") {
-		t.Errorf("concatAACFiles returned wrong error type for output creation failure: %v", err)
+	if _, err := os.Stat(nestedDir); err != nil {
+		t.Errorf("expected nested output dir to exist: %v", err)
 	}
 }
